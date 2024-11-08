@@ -1,0 +1,114 @@
+---
+x-shared:
+  zammad-service: &zammad-service
+    image: ghcr.io/zammad/zammad:latest
+    restart: always
+    environment: &zammad-environment
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: zammad
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_DB: zammad_production
+      POSTGRESQL_OPTIONS: '?pool=50'
+      POSTGRESQL_HOST: zammad-postgresql
+      MEMCACHE_SERVERS: 11211
+      POSTGRESQL_DB_CREATE:
+      REDIS_URL: redis://zammad-redis:6379
+      BACKUP_DIR: "/var/tmp/zammad"
+      BACKUP_TIME: "03:00"
+      HOLD_DAYS: "10"
+      TZ: "America/New_York"
+      AUTOWIZARD_JSON:
+      AUTOWIZARD_RELATIVE_PATH:
+      ELASTICSEARCH_ENABLED:
+      ELASTICSEARCH_HOST:
+      ELASTICSEARCH_PORT:
+      ELASTICSEARCH_SCHEMA:
+      ELASTICSEARCH_NAMESPACE:
+      ELASTICSEARCH_REINDEX:
+      ELASTICSEARCH_SSL_VERIFY:
+      NGINX_SERVER_NAME: zammad.${HOSTNAME}
+      NGINX_SERVER_SCHEME:
+      RAILS_TRUSTED_PROXIES:
+      ZAMMAD_WEB_CONCURRENCY:
+      ZAMMAD_SESSION_JOBS:
+      ZAMMAD_PROCESS_SCHEDULED:
+      ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS:
+    volumes:
+      - "/var/lib/srv/$USER/docker/zammad/zammad/latest/rootfs/data/zammad/storage:/opt/zammad/storage"
+    depends_on:
+      - zammad-memcached
+      - zammad-postgresql
+      - zammad-redis
+
+services:
+  zammad-backup:
+    <<: *zammad-service
+    command: ["zammad-backup"]
+    container_name: zammad-backup
+    user: 0:0
+    volumes:
+      - "/var/lib/srv/$USER/docker/zammad/zammad/latest/rootfs/data/zammad/backup:/var/tmp/zammad"
+      - "/var/lib/srv/$USER/docker/zammad/zammad/latest/rootfs/data/zammad/storage:/opt/zammad/storage:ro"
+
+  zammad-elasticsearch:
+    image: bitnami/elasticsearch:8.15.2
+    container_name: zammad-elasticsearch
+    restart: always
+    volumes:
+      - "/var/lib/srv/$USER/docker/zammad/zammad/latest/rootfs/data/db/elasticsearch:/bitnami/elasticsearch/data"
+
+  zammad-init:
+    <<: *zammad-service
+    command: ["zammad-init"]
+    restart: always
+    container_name: zammad-init
+    user: 0:0
+    depends_on:
+      - zammad-postgresql
+
+  zammad-memcached:
+    command: memcached -m 256M
+    image: memcached:1.6.31-alpine
+    container_name: zammad-memcached
+    restart: always
+
+  zammad-nginx:
+    <<: *zammad-service
+    command: ["zammad-nginx"]
+    container_name: zammad-nginx
+    expose:
+      - "59006"
+    ports:
+      - "59006:59006"
+    depends_on:
+      - zammad-railsserver
+
+  zammad-postgresql:
+    restart: always
+    container_name: zammad-postgresql
+    environment:
+      POSTGRES_USER: zammad
+      POSTGRES_PASSWORD: zammad
+      POSTGRES_DB: zammad_production
+    image: postgres:15.8-alpine
+    volumes:
+      - "/var/lib/srv/$USER/docker/zammad/zammad/latest/rootfs/data/db/postgres:/var/lib/postgresql/data"
+
+  zammad-railsserver:
+    <<: *zammad-service
+    command: ["zammad-railsserver"]
+
+  zammad-redis:
+    image: redis:7.4.1-alpine
+    container_name: zammad-redis
+    restart: always
+    volumes:
+      - "/var/lib/srv/$USER/docker/zammad/zammad/latest/rootfs/data/db/redis:/data"
+
+  zammad-scheduler:
+    <<: *zammad-service
+    command: ["zammad-scheduler"]
+
+  zammad-websocket:
+    <<: *zammad-service
+    command: ["zammad-websocket"]
