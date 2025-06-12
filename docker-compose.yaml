@@ -1,4 +1,4 @@
-# nginx proxy address - http://172.17.0.1:3000
+# nginx proxy address - http://172.17.0.1:8080
 
 name: zammad
 x-logging: &default-logging
@@ -23,16 +23,16 @@ x-shared:
       BACKUP_DIR: '/var/tmp/zammad'
       BACKUP_TIME: '03:00'
       HOLD_DAYS: '10'
-      TZ: 'America/New_York'
+      TZ: '${TZ:-America/New_York}'
       AUTOWIZARD_JSON:
       AUTOWIZARD_RELATIVE_PATH:
-      ELASTICSEARCH_ENABLED:
-      ELASTICSEARCH_HOST:
-      ELASTICSEARCH_PORT:
-      ELASTICSEARCH_SCHEMA:
-      ELASTICSEARCH_NAMESPACE:
-      ELASTICSEARCH_REINDEX:
-      ELASTICSEARCH_SSL_VERIFY:
+      ELASTICSEARCH_ENABLED: true
+      ELASTICSEARCH_HOST: zammad-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEMA: http
+      ELASTICSEARCH_NAMESPACE: zammad
+      ELASTICSEARCH_REINDEX: true
+      ELASTICSEARCH_SSL_VERIFY: false
       NGINX_SERVER_NAME: ${BASE_HOST_NAME:-$HOSTNAME}
       NGINX_SERVER_SCHEME:
       RAILS_TRUSTED_PROXIES:
@@ -54,6 +54,11 @@ services:
     restart: always
     pull_policy: always
     logging: *default-logging
+    environment:
+      ELASTICSEARCH_ENABLE_SECURITY: 'true'
+      ELASTICSEARCH_SKIP_TRANSPORT_TLS: 'true'
+      ELASTICSEARCH_ENABLE_REST_TLS: 'false'
+      ELASTICSEARCH_PASSWORD: zammad
     volumes:
       - './rootfs/db/elasticsearch:/bitnami/elasticsearch/data'
 
@@ -118,7 +123,7 @@ services:
     command: ['zammad-nginx']
     logging: *default-logging
     ports:
-      - '59006:59006'
+      - '172.17.0.1:59006:8080'
     depends_on:
       - railsserver
 
