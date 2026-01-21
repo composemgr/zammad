@@ -1,0 +1,140 @@
+# nginx proxy address - http://172.17.0.1:8080
+
+name: zammad
+x-logging: &default-logging
+  options:
+    max-size: '5m'
+    max-file: '1'
+  driver: json-file
+
+x-shared:
+  zammad-service: &zammad-service
+    image: ghcr.io/zammad/zammad:latest
+    environment: &zammad-environment
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: zammad
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_DB: zammad_production
+      POSTGRESQL_OPTIONS: '?pool=50'
+      POSTGRESQL_HOST: zammad-postgresql
+      MEMCACHE_SERVERS: 11211
+      POSTGRESQL_DB_CREATE:
+      REDIS_URL: redis://zammad-redis:6379
+      BACKUP_DIR: '/var/tmp/zammad'
+      BACKUP_TIME: '03:00'
+      HOLD_DAYS: '10'
+      TZ: '${TZ:-America/New_York}'
+      AUTOWIZARD_JSON:
+      AUTOWIZARD_RELATIVE_PATH:
+      ELASTICSEARCH_ENABLED: true
+      ELASTICSEARCH_HOST: zammad-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEMA: http
+      ELASTICSEARCH_NAMESPACE: zammad
+      ELASTICSEARCH_REINDEX: true
+      ELASTICSEARCH_SSL_VERIFY: false
+      NGINX_SERVER_NAME: ${BASE_HOST_NAME:-$HOSTNAME}
+      NGINX_SERVER_SCHEME:
+      RAILS_TRUSTED_PROXIES:
+      ZAMMAD_WEB_CONCURRENCY:
+      ZAMMAD_SESSION_JOBS:
+      ZAMMAD_PROCESS_SCHEDULED:
+      ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS:
+    volumes:
+      - './rootfs/data/zammad/storage:/opt/zammad/storage'
+    depends_on:
+      - redis
+      - memcached
+      - postgresql
+
+services:
+  elasticsearch:
+    image: elasticsearch:8.15.2
+    container_name: zammad-elasticsearch
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      ELASTICSEARCH_ENABLE_SECURITY: 'true'
+      ELASTICSEARCH_SKIP_TRANSPORT_TLS: 'true'
+      ELASTICSEARCH_ENABLE_REST_TLS: 'false'
+      ELASTICSEARCH_PASSWORD: zammad
+    volumes:
+      - './rootfs/db/elasticsearch:/bitnami/elasticsearch/data'
+
+  memcached:
+    image: memcached:1.6.31-alpine
+    container_name: zammad-memcached
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    command: memcached -m 256M
+
+  postgresql:
+    image: postgres:15.8-alpine
+    container_name: zammad-postgresql
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: zammad
+      POSTGRES_PASSWORD: zammad
+      POSTGRES_DB: zammad_production
+    volumes:
+      - './rootfs/db/postgres:/var/lib/postgresql/data'
+
+  redis:
+    image: redis:7.4.1-alpine
+    container_name: zammad-redis
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    volumes:
+      - './rootfs/db/redis:/data'
+
+  backup:
+    <<: *zammad-service
+    container_name: zammad-backup
+    restart: always
+    pull_policy: always
+    command: ['zammad-backup']
+    user: 0:0
+    logging: *default-logging
+    volumes:
+      - './rootfs/data/zammad/backup:/var/tmp/zammad'
+      - './rootfs/data/zammad/storage:/opt/zammad/storage:ro'
+
+  init:
+    <<: *zammad-service
+    container_name: zammad-init
+    restart: always
+    pull_policy: always
+    command: ['zammad-init']
+    user: 0:0
+    logging: *default-logging
+    depends_on:
+      - postgresql
+
+  nginx:
+    <<: *zammad-service
+    container_name: zammad-nginx
+    restart: always
+    pull_policy: always
+    command: ['zammad-nginx']
+    logging: *default-logging
+    ports:
+      - '172.17.0.1:59006:8080'
+    depends_on:
+      - railsserver
+
+  railsserver:
+    <<: *zammad-service
+    command: ['zammad-railsserver']
+
+  scheduler:
+    <<: *zammad-service
+    command: ['zammad-scheduler']
+
+  websocket:
+    <<: *zammad-service
+    command: ['zammad-websocket']
