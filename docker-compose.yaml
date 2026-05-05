@@ -41,7 +41,7 @@ x-shared:
       ZAMMAD_PROCESS_SCHEDULED:
       ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS:
     volumes:
-      - './rootfs/data/zammad/storage:/opt/zammad/storage'
+      - './volumes/data/zammad/storage:/opt/zammad/storage'
     depends_on:
       - redis
       - memcached
@@ -60,7 +60,7 @@ services:
       ELASTICSEARCH_ENABLE_REST_TLS: 'false'
       ELASTICSEARCH_PASSWORD: zammad
     volumes:
-      - './rootfs/data/db/elasticsearch:/bitnami/elasticsearch/data'
+      - './volumes/data/db/elasticsearch:/bitnami/elasticsearch/data'
 
   memcached:
     image: memcached:1.6.31-alpine
@@ -81,7 +81,7 @@ services:
       POSTGRES_PASSWORD: zammad
       POSTGRES_DB: zammad_production
     volumes:
-      - './rootfs/data/db/postgres:/var/lib/postgresql/data'
+      - './volumes/data/db/postgres:/var/lib/postgresql/data'
 
   redis:
     image: redis:7.4.1-alpine
@@ -90,7 +90,7 @@ services:
     pull_policy: always
     logging: *default-logging
     volumes:
-      - './rootfs/data/db/redis:/data'
+      - './volumes/data/db/redis:/data'
 
   backup:
     <<: *zammad-service
@@ -101,8 +101,8 @@ services:
     user: 0:0
     logging: *default-logging
     volumes:
-      - './rootfs/data/zammad/backup:/var/tmp/zammad'
-      - './rootfs/data/zammad/storage:/opt/zammad/storage:ro'
+      - './volumes/data/zammad/backup:/var/tmp/zammad'
+      - './volumes/data/zammad/storage:/opt/zammad/storage:ro'
 
   init:
     <<: *zammad-service
