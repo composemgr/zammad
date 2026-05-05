@@ -58,11 +58,11 @@ See `docker-compose.yaml` for complete list of configurable options.
 
 ## 📂 Volumes
 
-- `./rootfs/data/db/elasticsearch` - Data storage
-- `./rootfs/data/db/postgres` - Data storage
-- `./rootfs/data/db/redis` - Data storage
-- `./rootfs/data/zammad/backup` - Data storage
-- `./rootfs/data/zammad/storage` - Data storage
+- `./volumes/data/db/elasticsearch` - Data storage
+- `./volumes/data/db/postgres` - Data storage
+- `./volumes/data/db/redis` - Data storage
+- `./volumes/data/zammad/backup` - Data storage
+- `./volumes/data/zammad/storage` - Data storage
 
 ## 🔐 Security
 
