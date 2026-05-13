@@ -34,13 +34,12 @@ x-shared:
       ELASTICSEARCH_SCHEMA: http
       ELASTICSEARCH_NAMESPACE: zammad
       ELASTICSEARCH_REINDEX: true
-      ELASTICSEARCH_SSL_VERIFY: false
       NGINX_SERVER_NAME: ${BASE_HOST_NAME:-$HOSTNAME}
-      NGINX_SERVER_SCHEME: ${ZAMMAD_NGINX_SCHEME:-http}
+      ZAMMAD_HTTP_TYPE: ${ZAMMAD_HTTP_TYPE:-http}
       RAILS_TRUSTED_PROXIES: ${ZAMMAD_RAILS_TRUSTED_PROXIES:-}
       ZAMMAD_WEB_CONCURRENCY: ${ZAMMAD_WEB_CONCURRENCY:-}
-      ZAMMAD_SESSION_JOBS: ${ZAMMAD_SESSION_JOBS:-}
-      ZAMMAD_PROCESS_SCHEDULED: ${ZAMMAD_PROCESS_SCHEDULED:-}
+      ZAMMAD_PROCESS_SESSIONS_JOBS_WORKERS: ${ZAMMAD_PROCESS_SESSIONS_JOBS_WORKERS:-}
+      ZAMMAD_PROCESS_SCHEDULED_JOBS_WORKERS: ${ZAMMAD_PROCESS_SCHEDULED_JOBS_WORKERS:-}
       ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS: ${ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS:-}
     volumes:
       - './volumes/data/zammad/storage:/opt/zammad/storage'
@@ -53,7 +52,7 @@ x-shared:
 
 services:
   zammad-elasticsearch:
-    image: bitnami/elasticsearch:latest
+    image: elasticsearch:8.17.0
     container_name: zammad-elasticsearch
     restart: always
     pull_policy: always
@@ -61,12 +60,10 @@ services:
     environment:
       TZ: ${TZ:-America/New_York}
       CONTAINER_NAME: zammad-elasticsearch
-      ELASTICSEARCH_ENABLE_SECURITY: 'true'
-      ELASTICSEARCH_SKIP_TRANSPORT_TLS: 'true'
-      ELASTICSEARCH_ENABLE_REST_TLS: 'false'
-      ELASTICSEARCH_PASSWORD: ${DB_USER_PASS:-changeme_db_password}
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
     volumes:
-      - './volumes/data/db/elasticsearch:/bitnami/elasticsearch/data'
+      - './volumes/data/db/elasticsearch:/usr/share/elasticsearch/data'
     networks:
       - zammad
 
