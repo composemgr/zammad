@@ -64,7 +64,7 @@ services:
       ELASTICSEARCH_ENABLE_SECURITY: 'true'
       ELASTICSEARCH_SKIP_TRANSPORT_TLS: 'true'
       ELASTICSEARCH_ENABLE_REST_TLS: 'false'
-      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD:-changeme_db_password}
+      ELASTICSEARCH_PASSWORD: ${DB_USER_PASS:-changeme_db_password}
     volumes:
       - './volumes/data/db/elasticsearch:/bitnami/elasticsearch/data'
     networks:
