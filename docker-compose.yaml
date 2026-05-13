@@ -60,6 +60,7 @@ services:
     logging: *default-logging
     environment:
       TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: zammad-elasticsearch
       ELASTICSEARCH_ENABLE_SECURITY: 'true'
       ELASTICSEARCH_SKIP_TRANSPORT_TLS: 'true'
       ELASTICSEARCH_ENABLE_REST_TLS: 'false'
@@ -76,6 +77,8 @@ services:
     pull_policy: always
     logging: *default-logging
     command: memcached -m 256M
+    environment:
+      CONTAINER_NAME: zammad-memcached
     networks:
       - zammad
 
@@ -87,6 +90,7 @@ services:
     logging: *default-logging
     environment:
       TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: zammad-postgresql
       POSTGRES_USER: ${DB_USER_NAME:-zammad}
       POSTGRES_PASSWORD: ${DB_USER_PASS:-changeme_db_password}
       POSTGRES_DB: ${DB_CREATE_DATABASE_NAME:-zammad_production}
@@ -101,6 +105,8 @@ services:
     restart: always
     pull_policy: always
     logging: *default-logging
+    environment:
+      CONTAINER_NAME: zammad-redis
     volumes:
       - './volumes/data/db/redis:/data'
     networks:
@@ -111,6 +117,9 @@ services:
     container_name: zammad-backup
     command: ['zammad-backup']
     user: 0:0
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-backup
     volumes:
       - './volumes/data/zammad/backup:/var/tmp/zammad'
       - './volumes/data/zammad/storage:/opt/zammad/storage:ro'
@@ -120,6 +129,9 @@ services:
     container_name: zammad-init
     command: ['zammad-init']
     user: 0:0
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-init
     depends_on:
       - zammad-postgresql
 
@@ -127,27 +139,64 @@ services:
     <<: *zammad-service
     container_name: zammad-nginx
     command: ['zammad-nginx']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-nginx
+      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
     ports:
       - '172.17.0.1:59006:8080'
     depends_on:
       - zammad-railsserver
+    networks:
+      - zammad
+      - proxy
+      - cloudflare
+    labels:
+      - 'traefik.enable=true'
+      - 'cloudflare.enable=true'
+      - 'traefik.docker.network=proxy'
+      - 'cloudflare.service=http://zammad-nginx:8080'
+      - 'cloudflare.hostname=zammad.${CLOUDFLARE_ZONE_NAME:-}'
+      - 'traefik.http.routers.zammad-nginx.entrypoints=http'
+      - 'traefik.http.routers.zammad-nginx-secure.tls=true'
+      - 'traefik.http.routers.zammad-nginx.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.middlewares.zammad-nginx-https-redirect.redirectscheme.scheme=https'
+      - 'traefik.http.routers.zammad-nginx.middlewares=zammad-nginx-https-redirect'
+      - 'traefik.http.routers.zammad-nginx-secure.entrypoints=https'
+      - 'traefik.http.routers.zammad-nginx-secure.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.routers.zammad-nginx-secure.tls.certresolver=cloudflare'
+      - 'traefik.http.routers.zammad-nginx-secure.service=zammad-nginx'
+      - 'traefik.http.services.zammad-nginx.loadbalancer.server.port=8080'
 
   zammad-railsserver:
     <<: *zammad-service
     container_name: zammad-railsserver
     command: ['zammad-railsserver']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-railsserver
 
   zammad-scheduler:
     <<: *zammad-service
     container_name: zammad-scheduler
     command: ['zammad-scheduler']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-scheduler
 
   zammad-websocket:
     <<: *zammad-service
     container_name: zammad-websocket
     command: ['zammad-websocket']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-websocket
 
 networks:
   zammad:
     name: zammad
     external: false
+  proxy:
+    external: true
+  cloudflare:
+    external: true
