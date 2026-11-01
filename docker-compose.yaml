@@ -1,4 +1,4 @@
-# nginx proxy address - http://172.17.0.1:59006
+# nginx proxy address - http://172.17.0.1:64396
 
 name: zammad
 x-logging: &default-logging
@@ -16,7 +16,7 @@ x-shared:
     environment: &zammad-environment
       TZ: ${TZ:-America/New_York}
       POSTGRESQL_USER: ${DB_USER_NAME:-zammad}
-      POSTGRESQL_PASS: ${DB_USER_PASS:-changeme_db_password}
+      POSTGRESQL_PASS: ${DB_USER_PASS:-replace-with-a-random-password}
       POSTGRESQL_PORT: 5432
       POSTGRESQL_DB: ${DB_CREATE_DATABASE_NAME:-zammad_production}
       POSTGRESQL_OPTIONS: '?pool=50'
@@ -42,7 +42,7 @@ x-shared:
       ZAMMAD_PROCESS_SCHEDULED_JOBS_WORKERS: ${ZAMMAD_PROCESS_SCHEDULED_JOBS_WORKERS:-}
       ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS: ${ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS:-}
     volumes:
-      - './volumes/data/zammad/storage:/opt/zammad/storage'
+      - './volumes/data/zammad/storage:/opt/zammad/storage:z'
     depends_on:
       - zammad-redis
       - zammad-memcached
@@ -51,9 +51,26 @@ x-shared:
       - zammad
 
 services:
+  app:
+    <<: *zammad-service
+    container_name: zammad-nginx
+    command: ['zammad-nginx']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-nginx
+      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
+    ports:
+      - '172.17.0.1:64396:8080'
+    depends_on:
+      - zammad-railsserver
+    networks:
+      - zammad
+
   zammad-elasticsearch:
     image: elasticsearch:8.17.0
     container_name: zammad-elasticsearch
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: zammad-elasticsearch
     restart: always
     pull_policy: always
     logging: *default-logging
@@ -63,18 +80,21 @@ services:
       discovery.type: single-node
       xpack.security.enabled: 'false'
     volumes:
-      - './volumes/data/db/elasticsearch:/usr/share/elasticsearch/data'
+      - './volumes/db/elasticsearch:/usr/share/elasticsearch/data:z'
     networks:
       - zammad
 
   zammad-memcached:
     image: memcached:alpine
     container_name: zammad-memcached
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: zammad-memcached
     restart: always
     pull_policy: always
     logging: *default-logging
-    command: memcached -m 256M
+    command: ['memcached', '-m', '256M']
     environment:
+      TZ: ${TZ:-America/New_York}
       CONTAINER_NAME: zammad-memcached
     networks:
       - zammad
@@ -82,6 +102,8 @@ services:
   zammad-postgresql:
     image: postgres:latest
     container_name: zammad-postgresql
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: zammad-postgresql
     restart: always
     pull_policy: always
     logging: *default-logging
@@ -89,23 +111,26 @@ services:
       TZ: ${TZ:-America/New_York}
       CONTAINER_NAME: zammad-postgresql
       POSTGRES_USER: ${DB_USER_NAME:-zammad}
-      POSTGRES_PASSWORD: ${DB_USER_PASS:-changeme_db_password}
+      POSTGRES_PASSWORD: ${DB_USER_PASS:-replace-with-a-random-password}
       POSTGRES_DB: ${DB_CREATE_DATABASE_NAME:-zammad_production}
     volumes:
-      - './volumes/data/db/postgres:/var/lib/postgresql/data'
+      - './volumes/db/postgres:/var/lib/postgresql/data:z'
     networks:
       - zammad
 
   zammad-redis:
     image: redis:alpine
     container_name: zammad-redis
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: zammad-redis
     restart: always
     pull_policy: always
     logging: *default-logging
     environment:
+      TZ: ${TZ:-America/New_York}
       CONTAINER_NAME: zammad-redis
     volumes:
-      - './volumes/data/db/redis:/data'
+      - './volumes/db/redis:/data:z'
     networks:
       - zammad
 
@@ -118,52 +143,18 @@ services:
       <<: *zammad-environment
       CONTAINER_NAME: zammad-backup
     volumes:
-      - './volumes/data/zammad/backup:/var/tmp/zammad'
+      - './volumes/data/zammad/backup:/var/tmp/zammad:z'
       - './volumes/data/zammad/storage:/opt/zammad/storage:ro'
 
   zammad-init:
     <<: *zammad-service
     container_name: zammad-init
     command: ['zammad-init']
-    user: 0:0
     environment:
       <<: *zammad-environment
       CONTAINER_NAME: zammad-init
     depends_on:
       - zammad-postgresql
-
-  zammad-nginx:
-    <<: *zammad-service
-    container_name: zammad-nginx
-    command: ['zammad-nginx']
-    environment:
-      <<: *zammad-environment
-      CONTAINER_NAME: zammad-nginx
-      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
-    ports:
-      - '172.17.0.1:59006:8080'
-    depends_on:
-      - zammad-railsserver
-    networks:
-      - zammad
-      - proxy
-      - cloudflare
-    labels:
-      - 'traefik.enable=true'
-      - 'cloudflare.enable=true'
-      - 'traefik.docker.network=proxy'
-      - 'cloudflare.service=http://zammad-nginx:8080'
-      - 'cloudflare.hostname=zammad.${CLOUDFLARE_ZONE_NAME:-}'
-      - 'traefik.http.routers.zammad-nginx.entrypoints=http'
-      - 'traefik.http.routers.zammad-nginx-secure.tls=true'
-      - 'traefik.http.routers.zammad-nginx.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
-      - 'traefik.http.middlewares.zammad-nginx-https-redirect.redirectscheme.scheme=https'
-      - 'traefik.http.routers.zammad-nginx.middlewares=zammad-nginx-https-redirect'
-      - 'traefik.http.routers.zammad-nginx-secure.entrypoints=https'
-      - 'traefik.http.routers.zammad-nginx-secure.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
-      - 'traefik.http.routers.zammad-nginx-secure.tls.certresolver=cloudflare'
-      - 'traefik.http.routers.zammad-nginx-secure.service=zammad-nginx'
-      - 'traefik.http.services.zammad-nginx.loadbalancer.server.port=8080'
 
   zammad-railsserver:
     <<: *zammad-service
@@ -193,7 +184,3 @@ networks:
   zammad:
     name: zammad
     external: false
-  proxy:
-    external: true
-  cloudflare:
-    external: true

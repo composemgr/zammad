@@ -1,0 +1,197 @@
+name: zammad
+x-logging: &default-logging
+  options:
+    max-size: '5m'
+    max-file: '1'
+  driver: json-file
+
+x-shared:
+  zammad-service: &zammad-service
+    image: ghcr.io/zammad/zammad:latest
+    pull_policy: always
+    restart: always
+    logging: *default-logging
+    environment: &zammad-environment
+      TZ: ${TZ:-America/New_York}
+      POSTGRESQL_USER: ${DB_USER_NAME:-zammad}
+      POSTGRESQL_PASS: ${DB_USER_PASS:-replace-with-a-random-password}
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_DB: ${DB_CREATE_DATABASE_NAME:-zammad_production}
+      POSTGRESQL_OPTIONS: '?pool=50'
+      POSTGRESQL_HOST: zammad-postgresql
+      MEMCACHE_SERVERS: zammad-memcached:11211
+      REDIS_URL: redis://zammad-redis:6379
+      BACKUP_DIR: '/var/tmp/zammad'
+      BACKUP_TIME: '03:00'
+      HOLD_DAYS: '10'
+      AUTOWIZARD_JSON: ${ZAMMAD_AUTOWIZARD_JSON:-}
+      AUTOWIZARD_RELATIVE_PATH: ${ZAMMAD_AUTOWIZARD_RELATIVE_PATH:-}
+      ELASTICSEARCH_ENABLED: true
+      ELASTICSEARCH_HOST: zammad-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEMA: http
+      ELASTICSEARCH_NAMESPACE: zammad
+      ELASTICSEARCH_REINDEX: true
+      NGINX_SERVER_NAME: ${BASE_HOST_NAME:-$HOSTNAME}
+      ZAMMAD_HTTP_TYPE: ${ZAMMAD_HTTP_TYPE:-http}
+      RAILS_TRUSTED_PROXIES: ${ZAMMAD_RAILS_TRUSTED_PROXIES:-}
+      ZAMMAD_WEB_CONCURRENCY: ${ZAMMAD_WEB_CONCURRENCY:-}
+      ZAMMAD_PROCESS_SESSIONS_JOBS_WORKERS: ${ZAMMAD_PROCESS_SESSIONS_JOBS_WORKERS:-}
+      ZAMMAD_PROCESS_SCHEDULED_JOBS_WORKERS: ${ZAMMAD_PROCESS_SCHEDULED_JOBS_WORKERS:-}
+      ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS: ${ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS:-}
+    volumes:
+      - './volumes/data/zammad/storage:/opt/zammad/storage:z'
+    depends_on:
+      - zammad-redis
+      - zammad-memcached
+      - zammad-postgresql
+    networks:
+      - zammad
+
+services:
+  app:
+    <<: *zammad-service
+    container_name: zammad-nginx
+    command: ['zammad-nginx']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-nginx
+      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
+    depends_on:
+      - zammad-railsserver
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.docker.network=traefik'
+      - 'traefik.http.routers.zammad-nginx.entrypoints=http'
+      - 'traefik.http.routers.zammad-nginx.rule=Host(`${BASE_HOST_NAME:-$HOSTNAME}`)'
+      - 'traefik.http.routers.zammad-nginx.middlewares=zammad-nginx-https-redirect'
+      - 'traefik.http.middlewares.zammad-nginx-https-redirect.redirectscheme.scheme=https'
+      - 'traefik.http.routers.zammad-nginx-secure.entrypoints=https'
+      - 'traefik.http.routers.zammad-nginx-secure.rule=Host(`${BASE_HOST_NAME:-$HOSTNAME}`)'
+      - 'traefik.http.routers.zammad-nginx-secure.tls.certresolver=cloudflare'
+      - 'traefik.http.routers.zammad-nginx-secure.service=zammad-nginx'
+      - 'traefik.http.services.zammad-nginx.loadbalancer.server.port=8080'
+    networks:
+      - zammad
+      - traefik
+
+  zammad-elasticsearch:
+    image: elasticsearch:8.17.0
+    container_name: zammad-elasticsearch
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: zammad-elasticsearch
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: zammad-elasticsearch
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+    volumes:
+      - './volumes/db/elasticsearch:/usr/share/elasticsearch/data:z'
+    networks:
+      - zammad
+
+  zammad-memcached:
+    image: memcached:alpine
+    container_name: zammad-memcached
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: zammad-memcached
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    command: ['memcached', '-m', '256M']
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: zammad-memcached
+    networks:
+      - zammad
+
+  zammad-postgresql:
+    image: postgres:latest
+    container_name: zammad-postgresql
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: zammad-postgresql
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: zammad-postgresql
+      POSTGRES_USER: ${DB_USER_NAME:-zammad}
+      POSTGRES_PASSWORD: ${DB_USER_PASS:-replace-with-a-random-password}
+      POSTGRES_DB: ${DB_CREATE_DATABASE_NAME:-zammad_production}
+    volumes:
+      - './volumes/db/postgres:/var/lib/postgresql/data:z'
+    networks:
+      - zammad
+
+  zammad-redis:
+    image: redis:alpine
+    container_name: zammad-redis
+    domainname: ${BASE_DOMAIN_NAME:-example.com}
+    hostname: zammad-redis
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: zammad-redis
+    volumes:
+      - './volumes/db/redis:/data:z'
+    networks:
+      - zammad
+
+  zammad-backup:
+    <<: *zammad-service
+    container_name: zammad-backup
+    command: ['zammad-backup']
+    user: 0:0
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-backup
+    volumes:
+      - './volumes/data/zammad/backup:/var/tmp/zammad:z'
+      - './volumes/data/zammad/storage:/opt/zammad/storage:ro'
+
+  zammad-init:
+    <<: *zammad-service
+    container_name: zammad-init
+    command: ['zammad-init']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-init
+    depends_on:
+      - zammad-postgresql
+
+  zammad-railsserver:
+    <<: *zammad-service
+    container_name: zammad-railsserver
+    command: ['zammad-railsserver']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-railsserver
+
+  zammad-scheduler:
+    <<: *zammad-service
+    container_name: zammad-scheduler
+    command: ['zammad-scheduler']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-scheduler
+
+  zammad-websocket:
+    <<: *zammad-service
+    container_name: zammad-websocket
+    command: ['zammad-websocket']
+    environment:
+      <<: *zammad-environment
+      CONTAINER_NAME: zammad-websocket
+
+networks:
+  zammad:
+    name: zammad
+    external: false
+  traefik:
+    external: true
